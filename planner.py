@@ -1,4 +1,4 @@
-# planner.py (With PAUSE capability)
+# planner.py (Definitive Production Version)
 
 import os
 import json
@@ -17,8 +17,8 @@ generation_config = { "temperature": 0.1, "response_mime_type": "application/jso
 def generate_action_plan(command: str, screenshot_bytes: bytes, page_html: str, current_url: str, history: list) -> dict:
     print("Planner: Asking Vision AI to analyze screenshot and HTML...")
     
-    formatted_history = json.dumps(history, indent=2)
     img = Image.open(io.BytesIO(screenshot_bytes))
+    formatted_history = json.dumps(history, indent=2)
 
     prompt = f"""
     You are an expert computer-use agent. Your goal is to achieve the user's command by combining visual analysis from a screenshot with structural analysis from HTML code.
@@ -26,15 +26,15 @@ def generate_action_plan(command: str, screenshot_bytes: bytes, page_html: str, 
     **PRIMARY DIRECTIVE: DUAL ANALYSIS & PROBLEM SOLVING**
     Analyze the screenshot and HTML to determine the next best action. If a previous action failed, your priority is to recover.
 
-    **CAPTCHA HANDLING:**
-    If you analyze the screenshot and HTML and identify a CAPTCHA challenge (e.g., an `iframe` with 'reCAPTCHA' in its name, a "I'm not a robot" checkbox, or a "select all images with..." prompt), your action MUST be `PAUSE`.
-
     **CODE GENERATION RULES & ACTION TYPES:**
-    - Your generated code MUST be a single line of valid asynchronous Playwright Python code.
-    - You have access to the `page` object.
-    - Action code can be `page.goto(...)`, `page.locator(...).click()`, `page.select_option(...)`, `page.keyboard.press(...)`, etc.
+    - Your generated code MUST be a single line of valid asynchronous Playwright Python code. **You MUST NOT include the `await` keyword in your `code` string.**
     - If the task is complete, generate the code `"FINISH"`.
     - If you encounter a CAPTCHA, generate the code `"PAUSE_FOR_HUMAN"`.
+
+    **PLAYWRIGHT EXAMPLES (DO NOT INCLUDE 'await'):**
+    - `page.goto("https://example.com")`
+    - `page.locator("button[type='submit']").click()`
+    - `page.select_option("select#country", value="IN")`
 
     ---
     **CONTEXT**
@@ -47,12 +47,6 @@ def generate_action_plan(command: str, screenshot_bytes: bytes, page_html: str, 
     ---
     **Your JSON Response:**
     Your output MUST be a valid JSON object with "reasoning" and "code" keys.
-    ```json
-    {{
-        "reasoning": "A step-by-step explanation of what you see and why you are generating this code.",
-        "code": "page.locator('...').click()"
-    }}
-    ```
     """
     
     try:

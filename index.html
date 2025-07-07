@@ -11,9 +11,10 @@
         textarea { width: 100%; padding: 10px; border-radius: 4px; border: 1px solid #ccc; font-size: 1rem; margin-bottom: 1rem; box-sizing: border-box; }
         button { width: 100%; padding: 12px; background-color: #007bff; color: white; border: none; border-radius: 4px; font-size: 1.1rem; cursor: pointer; }
         button:disabled { background-color: #aaa; }
-        #status { text-align: center; margin-top: 1rem; font-weight: bold; color: #555; height: 20px; padding: 10px; border-radius: 4px;}
+        #status-area { text-align: left; margin-top: 1rem; padding: 10px; border-radius: 4px; line-height: 1.5; }
         .status-error { background-color: #ffebee; color: #c62828; }
         .status-human { background-color: #fff3e0; color: #f57c00; }
+        .status-running { background-color: #e3f2fd; color: #1e88e5; }
         #result-container { margin-top: 1rem; border-top: 1px solid #eee; padding-top: 1rem; }
         #result-image { max-width: 100%; border: 1px solid #ddd; border-radius: 4px; }
     </style>
@@ -22,10 +23,10 @@
     <div class="container">
         <h1>AI Agent Control Panel</h1>
         <form id="agent-form">
-            <textarea id="command-input" rows="3" placeholder="Enter a command for the agent... e.g., Search for Panacea Smart Solutions on Google and find the company's address."></textarea>
+            <textarea id="command-input" rows="4" placeholder="Enter a command for the agent... e.g., Search for Panacea Smart Solutions on Google, navigate to their official website, and find the company's address."></textarea>
             <button id="run-button" type="submit">Run Agent</button>
         </form>
-        <div id="status"></div>
+        <div id="status-area">Agent is idle.</div>
         <div id="result-container">
             <img id="result-image" src="" alt="Agent screenshot will appear here">
         </div>
@@ -35,60 +36,101 @@
         const form = document.getElementById('agent-form');
         const commandInput = document.getElementById('command-input');
         const runButton = document.getElementById('run-button');
-        const statusDiv = document.getElementById('status');
+        const statusArea = document.getElementById('status-area');
         const resultImage = document.getElementById('result-image');
+        let currentTaskId = null;
 
         form.addEventListener('submit', async (event) => {
             event.preventDefault();
             const command = commandInput.value;
-            if (!command) {
-                alert('Please enter a command.');
-                return;
-            }
+            if (!command) return;
 
             runButton.disabled = true;
-            statusDiv.textContent = 'Agent is working...';
-            statusDiv.className = '';
+            statusArea.className = 'status-running';
+            statusArea.textContent = 'Starting new task...';
             resultImage.src = "";
 
             try {
-                const response = await fetch('/run-agent', {
+                // Step 1: Start the task and get a task ID
+                const startResponse = await fetch('/start-task', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ command: command })
                 });
 
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || 'An unknown server error occurred.');
+                if (!startResponse.ok) {
+                    throw new Error('Failed to start the task.');
                 }
+                const startData = await startResponse.json();
+                currentTaskId = startData.task_id;
                 
-                // --- THIS IS THE NEW LOGIC ---
-                // Check if the response is JSON (human required) or an image (task finished)
-                const contentType = response.headers.get("content-type");
-                if (contentType && contentType.includes("application/json")) {
-                    const data = await response.json();
-                    if (data.status === 'human_required') {
-                        statusDiv.textContent = `PAUSED: ${data.message}`;
-                        statusDiv.className = 'status-human';
-                        resultImage.src = data.screenshot;
-                    }
-                } else {
-                    // Otherwise, assume it's the final screenshot
-                    const imageBlob = await response.blob();
-                    const imageUrl = URL.createObjectURL(imageBlob);
-                    resultImage.src = imageUrl;
-                    statusDiv.textContent = 'Task finished successfully!';
-                }
+                // Step 2: Start polling for the next step
+                runNextStep();
 
             } catch (error) {
-                statusDiv.textContent = `Error: ${error.message}`;
-                statusDiv.className = 'status-error';
-                console.error('Error:', error);
-            } finally {
-                runButton.disabled = false;
+                handleError(error.message);
             }
         });
+
+        async function runNextStep() {
+            if (!currentTaskId) return;
+            
+            statusArea.textContent += '\nThinking...';
+
+            try {
+                const response = await fetch('/run-next-step', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ task_id: currentTaskId })
+                });
+
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.detail || 'An unknown server error occurred.');
+                }
+                const data = await response.json();
+                
+                statusArea.textContent += `\n> ${data.reason || 'Executing...'}`;
+
+                if (data.status === 'continue') {
+                    // If the agent needs to continue, call the next step after a short delay
+                    setTimeout(runNextStep, 1000);
+                } else if (data.status === 'finished') {
+                    handleFinish(data);
+                } else if (data.status === 'human_required') {
+                    handleHumanRequired(data);
+                } else if (data.status === 'error') {
+                    handleError(data.reason);
+                }
+
+            } catch(error) {
+                handleError(error.message);
+            }
+        }
+        
+        function handleFinish(data) {
+            statusArea.textContent = `Task Finished: ${data.reason}`;
+            statusArea.className = '';
+            resultImage.src = data.screenshot;
+            runButton.disabled = false;
+            currentTaskId = null;
+        }
+
+        function handleHumanRequired(data) {
+            statusArea.textContent = `PAUSED: ${data.reason}`;
+            statusArea.className = 'status-human';
+            resultImage.src = data.screenshot;
+            runButton.disabled = false;
+            currentTaskId = null;
+        }
+        
+        function handleError(message) {
+            statusArea.textContent = `Error: ${message}`;
+            statusArea.className = 'status-error';
+            runButton.disabled = false;
+            currentTaskId = null;
+        }
+
     </script>
 </body>
 </html>
