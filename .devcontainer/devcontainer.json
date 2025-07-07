@@ -1,13 +1,14 @@
-// .devcontainer/devcontainer.json
+// .devcontainer/devcontainer.json (Final Version)
 {
   "name": "AI Agent Codespace",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
 
   "features": {
-    "ghcr.io/devcontainers/features/node:1": {}
+    "ghcr.io/devcontainers/features/node": {}
   },
 
-  "postCreateCommand": "sudo playwright install-deps && pip install -r requirements.txt && playwright install chromium",
+  // We now run our setup script after the container is created.
+  "postCreateCommand": ".devcontainer/setup.sh",
 
   "customizations": {
     "vscode": {
